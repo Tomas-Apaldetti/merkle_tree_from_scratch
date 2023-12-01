@@ -28,10 +28,10 @@ pub struct SHA256 {
 }
 
 impl SHA256 {
-    /// Circula right shift operation, where `x` is a 32 bit word
+    /// Circular right shift operation, where `x` is a 32 bit word
     /// and n is an integer with 0 <= n < w (not checked at runtime)
     fn rotate_right(x: u32, n: u8) -> u32 {
-        (x >> n) & (x << (WORD_LENGTH_BITS - n as u32))
+        (x >> n) | (x << (WORD_LENGTH_BITS - n as u32))
     }
 
     /// Right shift operation where `x` is a 32 bit word,
@@ -41,25 +41,14 @@ impl SHA256 {
     }
 
     fn ch(x: u32, y: u32, z: u32) -> u32 {
-        let a: u32 = x & y;
+        let a  = x & y;
         let not_x = !x;
         let b = not_x & z;
         return a ^ b;
     }
 
     fn maj(x: u32, y: u32, z: u32) -> u32 {
-        return (x & y) ^ (x & z) ^ (y ^ z);
-    }
-
-    fn mix(w: &[u32], t: usize) -> u32 {
-        let s0 = Self::rotate_right(w[t - 2], 7)
-            ^ Self::rotate_right(w[t - 2], 18)
-            ^ Self::shif_right(w[t - 2], 3);
-        let s1 = Self::rotate_right(w[t - 15], 7)
-            ^ Self::rotate_right(w[t - 15], 18)
-            ^ Self::shif_right(w[t - 15], 3);
-
-        mod_sum(&[s0, w[t - 7], s1, w[t - 16]])
+        return (x & y) ^ (x & z) ^ (y & z);
     }
 
     fn hash_round(w: &[u32], hash_state: &mut [u32]) {
@@ -101,11 +90,32 @@ impl SHA256 {
         hash_state[H] = mod_sum(&[h, hash_state[H]]);
     }
 
+    fn mix(w: &[u32], t: usize) -> u32 {
+        let s0 = Self::rotate_right(w[t - 15], 7)
+            ^ Self::rotate_right(w[t - 15], 18)
+            ^ Self::shif_right(w[t - 15], 3);
+
+
+        let s1 = Self::rotate_right(w[t - 2], 17)
+            ^ Self::rotate_right(w[t - 2], 19)
+            ^ Self::shif_right(w[t - 2], 10);
+
+        mod_sum(&[s0, w[t - 7], s1, w[t - 16]])
+    }
+
+    fn chunk_to_schedule(w: &mut [u32], chunk: &[u8]){
+        for i in (0..64).step_by(4){
+            w[i / 4] = u32::from_be_bytes(
+                [chunk[i+3], chunk[i+2], chunk[i+1], chunk[i]]
+            ).to_be();
+        }
+    }
+
     fn do_64bytes_chunk(hash: &mut [u32], chunk: &[u8]) {
-        let mut message_schedule = [0u8; 64 * 4];
-        message_schedule[..(16 * 4)].copy_from_slice(&chunk);
-        // Safety: Fixed length arrays, they are the same array interpreted another way
-        let mut w: [u32; 64] = unsafe { std::mem::transmute(message_schedule) };
+        let mut w = [0u32;64];
+
+        Self::chunk_to_schedule(&mut w, chunk);
+
         for t in 16..64 {
             w[t] = Self::mix(&w, t);
         }
@@ -127,7 +137,7 @@ impl SHA256 {
             //Copy the data
             padded[..chunk.len()].copy_from_slice(chunk);
             padded[chunk.len()] = b'\x80';
-            padded[56..64].copy_from_slice(&total_lenght.to_be_bytes());
+            padded[56..64].copy_from_slice(&(total_lenght << 3).to_be_bytes());
             Self::do_64bytes_chunk(hash, &padded);
         } else if chunk.len() < 64 {
             // This means that it needs padding, but it should be added as a
@@ -139,7 +149,7 @@ impl SHA256 {
             Self::do_64bytes_chunk(hash, &padded);
 
             let mut padding = [0u8; 64];
-            padding[56..64].copy_from_slice(&total_lenght.to_be_bytes());
+            padding[56..64].copy_from_slice(&(total_lenght << 3).to_be_bytes());
 
             Self::do_64bytes_chunk(hash, &padding);
         } else if chunk.len() == 64 && already_processed + 64 >= total_lenght {
@@ -148,7 +158,7 @@ impl SHA256 {
             Self::do_64bytes_chunk(hash, chunk);
             let mut padding = [0u8; 64];
             padding[0] = b'\x80';
-            padding[56..64].copy_from_slice(&total_lenght.to_be_bytes());
+            padding[56..64].copy_from_slice(&(total_lenght << 3).to_be_bytes());
 
             Self::do_64bytes_chunk(hash, &padding);
         } else {
@@ -167,5 +177,53 @@ impl CryptoHasher for SHA256 {
         }
 
         return CryptoHash { data: hash };
+    }
+}
+
+#[cfg(test)]
+mod test{
+    use super::*;
+
+    #[test]
+    fn ch_test(){
+        assert_eq!(SHA256::ch(1u32, 2u32, 3u32), (1u32 & 2u32) ^ (!1u32 & 3u32));
+        assert_eq!(SHA256::ch(1234125u32, 2211234u32, 1234123u32), (1234125u32 & 2211234u32) ^ (!1234125u32 & 1234123u32));
+    }
+
+    #[test]
+    fn rr_test(){
+        assert_eq!(SHA256::rotate_right(1u32, 1), 2147483648u32);
+        assert_eq!(SHA256::rotate_right(858324u32, 8), 3556773144u32);
+    }
+
+    #[test]
+    fn sr_test(){
+        assert_eq!(SHA256::shif_right(1u32, 1), 0u32);
+        assert_eq!(SHA256::shif_right(858324u32, 8), 3352u32);
+    }
+
+    #[test]
+    fn maj_test(){
+
+    }
+
+    #[test]
+    fn sha256_test(){
+        let inputs = [
+            (
+                b"This is a test",
+                [
+                    0xC7BE1ED9u32,
+                    0x2FB8DD4,
+                    0xD48997C6,
+                    0x452F5D7E,
+                    0x509FBCDB,
+                    0xE2808B16,
+                    0xBCF4EDCE,
+                    0x4C07D14E
+                ]
+            )
+        ];
+        assert_eq!(SHA256::hash(inputs[0].0).data, inputs[0].1);
     }
 }
