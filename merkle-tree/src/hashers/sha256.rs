@@ -1,3 +1,5 @@
+use std::{marker::PhantomData, cmp::min};
+
 use super::{CryptoHasher, CryptoHash, utils::mod_sum};
 
 const CONSTANTS: [u32; 64] = [
@@ -36,27 +38,13 @@ const G:usize = 6;
 const H:usize = 7;
 
 const WORD_LENGTH_BITS: u32 = 32;
-struct SHA256{
-
+pub struct SHA256{
+    non_instance: PhantomData<bool>
 }
 
 impl SHA256 {
     fn new()-> Self{
-        Self { }
-    }
-    /// Ensure that the message is a multiple of 512 bits.
-    /// 
-    /// Append the bit 1 to the end of the message, followed by k zero bits,
-    /// where k is the smallest, non-negative solution to the equation 
-    /// `l + 1 + k = 448 mod 512` => `l + 1000 0000 b + k = 56 mod 64`
-    /// Then append the 64-bit block that is equal to the number L expressed using a binary representation
-    /// 
-    /// This has an unique memory allocation and an N bit copy of the message
-    fn pad(bytes: &[u8]) -> Vec<u8>{
-        let bit_length = (bytes.len() as u64 * 8u64).to_be_bytes();
-        let mdi = bytes.len() % 64;
-        let npad = if mdi < 56 {55 - mdi} else {119-mdi};
-        [bytes, &[b'\x80'], &PADDING[..npad], &bit_length].concat()
+        Self { non_instance: PhantomData}
     }
 
     /// Circula right shift operation, where `x` is a 32 bit word
@@ -146,6 +134,62 @@ impl SHA256 {
         hash_state[H] = mod_sum(&[h, hash_state[H]]);
     }
 
+    fn do_64bytes_chunk(hash: &mut [u32], chunk: &[u8]){
+        let mut message_schedule = [0u8; 64 * 4];
+        message_schedule[..(16 * 4)].copy_from_slice(&chunk);
+        let mut w: [u32; 64] = unsafe{
+            std::mem::transmute(message_schedule)
+        };
+
+        for t in 16..64{
+            w[t] = Self::mix(&w, t);
+        }
+
+        Self::hash_round(&w, hash);
+    }
+
+    /// Ensure that the message is a multiple of 512 bits.
+    /// 
+    /// Append the bit 1 to the end of the message, followed by k zero bits,
+    /// where k is the smallest, non-negative solution to the equation 
+    /// `l + 1 + k = 448 mod 512` => `l + 1000 0000 b + k = 56 mod 64`
+    /// Then append the 64-bit block that is equal to the number L expressed using a binary representation
+    fn do_chunk(hash: &mut [u32], chunk: &[u8], already_processed: u64,  total_lenght: u64) {
+        if chunk.len() < 56 {
+            // This means that it needs padding but it can be padded in the same block
+            // it needs to first 56 bits in order to avoid modifying the original data
+            let mut padded = [0u8;64];
+            //Copy the data 
+            padded[..chunk.len()].copy_from_slice(chunk);
+            padded[chunk.len()] = b'\x80';
+            padded[56..64].copy_from_slice(&total_lenght.to_be_bytes());
+            Self::do_64bytes_chunk(hash, &padded);
+        } else if chunk.len() < 64 {
+            // This means that it needs padding, but it should be added as a 
+            // new block because the len of the message can't be inserted in it
+            let mut padded = [0u8;64];
+            padded[..chunk.len()].copy_from_slice(chunk);
+            padded[chunk.len()] = b'\x80';
+            
+            Self::do_64bytes_chunk(hash, &padded);
+
+            let mut padding = [0u8;64];
+            padding[56..64].copy_from_slice(&total_lenght.to_be_bytes());
+
+            Self::do_64bytes_chunk(hash, &padding);
+        } else if chunk.len() == 64 && already_processed + 64 >= total_lenght{
+            // This means is the last chunk, but the bits of the message is divisible by 512.
+            // Add a whole block of padding
+            Self::do_64bytes_chunk(hash, chunk);
+            let mut padding = [0u8;61];
+            padding[0] = b'\x80';
+            padding[56..64].copy_from_slice(&total_lenght.to_be_bytes());
+
+            Self::do_64bytes_chunk(hash, &padding);
+        }else{
+            Self::do_64bytes_chunk(hash, chunk);
+        }
+    }
 }
 
 
@@ -153,25 +197,12 @@ impl CryptoHasher for SHA256{
     fn hash(&self, bytes: &[u8]) -> CryptoHash {
         let mut hash = [0;8];
         hash.copy_from_slice(&INITIALS);
-        let padded = Self::pad(bytes);
 
-        for i in (0..padded.len()).step_by(64){
-            let mut message_schedule = [0u8; 64 * 4];
-            
-            message_schedule[..(16 * 4)].copy_from_slice(&padded[i..i+64]);
-            let mut w: [u32; 64] = unsafe{
-                std::mem::transmute(message_schedule)
-            };
-
-            for t in i+16..i+64{
-                w[t] = Self::mix(&w, t);
-            }
-            Self::hash_round(&w, &mut hash);
+        for i in (0..bytes.len()).step_by(64){
+            let offset = min(i+64, bytes.len());
+            Self::do_chunk(&mut hash, &bytes[i..offset], i as u64, bytes.len() as u64)
         }
-
 
         return CryptoHash { data: hash }
     }
-
-    
 }
