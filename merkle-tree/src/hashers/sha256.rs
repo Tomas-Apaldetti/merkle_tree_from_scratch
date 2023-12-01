@@ -118,8 +118,7 @@ impl SHA256 {
             Self::rotate_right(e, 25);
             
             let t1 = mod_sum(&[
-                h, 
-                s0, 
+                h,  
                 s1, 
                 ch, 
                 w[i], 
