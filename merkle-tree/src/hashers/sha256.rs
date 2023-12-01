@@ -1,6 +1,4 @@
-use crate::utils::num_traits::{OverflowingAdd, Zero};
-
-use super::{CryptoHasher, CryptoHash};
+use super::{CryptoHasher, CryptoHash, utils::mod_sum};
 
 const CONSTANTS: [u32; 64] = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
@@ -148,18 +146,6 @@ impl SHA256 {
         hash_state[H] = mod_sum(&[h, hash_state[H]]);
     }
 
-}
-
-fn mod_sum<T: OverflowingAdd + Zero>(numbers: &[T]) -> T{
-    if numbers.len() == 0 {
-        return T::zero();
-    }
-    if numbers.len() == 1{
-        return numbers[0];
-    }
-
-    let (result, _) = numbers[0].overflow_add(mod_sum(&numbers[1..]));
-    result
 }
 
 
