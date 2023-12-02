@@ -1,6 +1,6 @@
 use std::{cmp::min, marker::PhantomData};
 
-use super::{utils::mod_sum, CryptoHash, CryptoHasher};
+use super::{utils::{mod_sum, rotate_right, shif_right}, CryptoHash, CryptoHasher};
 
 const CONSTANTS: [u32; 64] = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -21,25 +21,12 @@ const E: usize = 4;
 const F: usize = 5;
 const G: usize = 6;
 const H: usize = 7;
-
-const WORD_LENGTH_BITS: u32 = 32;
 pub struct SHA256 {
     non_instance: PhantomData<bool>,
 }
 
 impl SHA256 {
-    /// Circular right shift operation, where `x` is a 32 bit word
-    /// and n is an integer with 0 <= n < w (not checked at runtime)
-    fn rotate_right(x: u32, n: u8) -> u32 {
-        (x >> n) | (x << (WORD_LENGTH_BITS - n as u32))
-    }
-
-    /// Right shift operation where `x` is a 32 bit word,
-    /// and n is an integer with 0 <= n < w (not checked at runtime)
-    fn shif_right(x: u32, n: u8) -> u32 {
-        x >> n
-    }
-
+    #[inline(always)]
     fn ch(x: u32, y: u32, z: u32) -> u32 {
         let a  = x & y;
         let not_x = !x;
@@ -47,62 +34,26 @@ impl SHA256 {
         return a ^ b;
     }
 
+    #[inline(always)]
     fn maj(x: u32, y: u32, z: u32) -> u32 {
-        return (x & y) ^ (x & z) ^ (y & z);
+        (x & y) ^ (x & z) ^ (y & z)
     }
 
-    fn hash_round(w: &[u32], hash_state: &mut [u32]) {
-        let mut a = hash_state[A];
-        let mut b = hash_state[B];
-        let mut c = hash_state[C];
-        let mut d = hash_state[D];
-        let mut e = hash_state[E];
-        let mut f = hash_state[F];
-        let mut g = hash_state[G];
-        let mut h = hash_state[H];
-
-        for i in 0..64 {
-            let ch = Self::ch(e, f, g);
-            let maj = Self::maj(a, b, c);
-            let s0 =
-                Self::rotate_right(a, 2) ^ Self::rotate_right(a, 13) ^ Self::rotate_right(a, 22);
-            let s1 =
-                Self::rotate_right(e, 6) ^ Self::rotate_right(e, 11) ^ Self::rotate_right(e, 25);
-
-            let t1 = mod_sum(&[h, s1, ch, w[i], CONSTANTS[i]]);
-            h = g;
-            g = f;
-            f = e;
-            e = mod_sum(&[d, t1]);
-            d = c;
-            c = b;
-            b = a;
-            a = mod_sum(&[t1, s0, maj]);
-        }
-
-        hash_state[A] = mod_sum(&[a, hash_state[A]]);
-        hash_state[B] = mod_sum(&[b, hash_state[B]]);
-        hash_state[C] = mod_sum(&[c, hash_state[C]]);
-        hash_state[D] = mod_sum(&[d, hash_state[D]]);
-        hash_state[E] = mod_sum(&[e, hash_state[E]]);
-        hash_state[F] = mod_sum(&[f, hash_state[F]]);
-        hash_state[G] = mod_sum(&[g, hash_state[G]]);
-        hash_state[H] = mod_sum(&[h, hash_state[H]]);
-    }
-
+    #[inline(always)]
     fn mix(w: &[u32], t: usize) -> u32 {
-        let s0 = Self::rotate_right(w[t - 15], 7)
-            ^ Self::rotate_right(w[t - 15], 18)
-            ^ Self::shif_right(w[t - 15], 3);
+        let s0 = rotate_right(w[t - 15], 7)
+            ^ rotate_right(w[t - 15], 18)
+            ^ shif_right(w[t - 15], 3);
 
 
-        let s1 = Self::rotate_right(w[t - 2], 17)
-            ^ Self::rotate_right(w[t - 2], 19)
-            ^ Self::shif_right(w[t - 2], 10);
+        let s1 = rotate_right(w[t - 2], 17)
+            ^ rotate_right(w[t - 2], 19)
+            ^ shif_right(w[t - 2], 10);
 
         mod_sum(&[s0, w[t - 7], s1, w[t - 16]])
     }
 
+    #[inline(always)]
     fn chunk_to_schedule(w: &mut [u32], chunk: &[u8]){
         for i in (0..64).step_by(4){
             w[i / 4] = u32::from_be_bytes(
@@ -111,18 +62,7 @@ impl SHA256 {
         }
     }
 
-    fn do_64bytes_chunk(hash: &mut [u32], chunk: &[u8]) {
-        let mut w = [0u32;64];
-
-        Self::chunk_to_schedule(&mut w, chunk);
-
-        for t in 16..64 {
-            w[t] = Self::mix(&w, t);
-        }
-
-        Self::hash_round(&w, hash);
-    }
-
+    
     /// Ensure that the message is a multiple of 512 bits.
     ///
     /// Append the bit 1 to the end of the message, followed by k zero bits,
@@ -165,6 +105,58 @@ impl SHA256 {
             Self::do_64bytes_chunk(hash, chunk);
         }
     }
+
+
+    fn do_64bytes_chunk(hash: &mut [u32], chunk: &[u8]) {
+        let mut w = [0u32;64];
+
+        Self::chunk_to_schedule(&mut w, chunk);
+
+        for t in 16..64 {
+            w[t] = Self::mix(&w, t);
+        }
+
+        Self::hash_round(&w, hash);
+    }
+
+    fn hash_round(w: &[u32], hash_state: &mut [u32]) {
+        let mut a = hash_state[A];
+        let mut b = hash_state[B];
+        let mut c = hash_state[C];
+        let mut d = hash_state[D];
+        let mut e = hash_state[E];
+        let mut f = hash_state[F];
+        let mut g = hash_state[G];
+        let mut h = hash_state[H];
+
+        for i in 0..64 {
+            let ch = Self::ch(e, f, g);
+            let maj = Self::maj(a, b, c);
+            let s0 =
+                rotate_right(a, 2) ^ rotate_right(a, 13) ^ rotate_right(a, 22);
+            let s1 =
+                rotate_right(e, 6) ^ rotate_right(e, 11) ^ rotate_right(e, 25);
+
+            let t1 = mod_sum(&[h, s1, ch, w[i], CONSTANTS[i]]);
+            h = g;
+            g = f;
+            f = e;
+            e = mod_sum(&[d, t1]);
+            d = c;
+            c = b;
+            b = a;
+            a = mod_sum(&[t1, s0, maj]);
+        }
+
+        hash_state[A] = mod_sum(&[a, hash_state[A]]);
+        hash_state[B] = mod_sum(&[b, hash_state[B]]);
+        hash_state[C] = mod_sum(&[c, hash_state[C]]);
+        hash_state[D] = mod_sum(&[d, hash_state[D]]);
+        hash_state[E] = mod_sum(&[e, hash_state[E]]);
+        hash_state[F] = mod_sum(&[f, hash_state[F]]);
+        hash_state[G] = mod_sum(&[g, hash_state[G]]);
+        hash_state[H] = mod_sum(&[h, hash_state[H]]);
+    }
 }
 
 impl CryptoHasher for SHA256 {
@@ -188,18 +180,6 @@ mod test{
     fn ch_test(){
         assert_eq!(SHA256::ch(1u32, 2u32, 3u32), (1u32 & 2u32) ^ (!1u32 & 3u32));
         assert_eq!(SHA256::ch(1234125u32, 2211234u32, 1234123u32), (1234125u32 & 2211234u32) ^ (!1234125u32 & 1234123u32));
-    }
-
-    #[test]
-    fn rr_test(){
-        assert_eq!(SHA256::rotate_right(1u32, 1), 2147483648u32);
-        assert_eq!(SHA256::rotate_right(858324u32, 8), 3556773144u32);
-    }
-
-    #[test]
-    fn sr_test(){
-        assert_eq!(SHA256::shif_right(1u32, 1), 0u32);
-        assert_eq!(SHA256::shif_right(858324u32, 8), 3352u32);
     }
 
     #[test]

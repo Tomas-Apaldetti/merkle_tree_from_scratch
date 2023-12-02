@@ -1,6 +1,17 @@
-use crate::utils::num_traits::{OverflowingAdd, Zero};
+use crate::utils::num_traits::{OverflowingAdd, Zero, Number, BitLength};
 
-pub(super) fn mod_sum<T: OverflowingAdd + Zero>(numbers: &[T]) -> T {
+#[inline(always)]
+pub(crate) fn rotate_right<T: Number + BitLength>(x: T, n: T) -> T {
+    let max = T::bit_length();
+    (x >> n) | (x << (max - n))
+}
+
+#[inline(always)]
+pub(crate) fn shif_right<T: Number>(x:T, n: T) -> T {
+    x >> n
+}
+
+pub(crate) fn mod_sum<T: OverflowingAdd + Zero>(numbers: &[T]) -> T {
     if numbers.len() == 0 {
         return T::zero();
     }
