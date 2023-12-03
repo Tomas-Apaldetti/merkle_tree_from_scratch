@@ -26,7 +26,7 @@ where
 }
 
 pub(crate) trait BitLength{
-    fn bit_length()->Self;
+    fn bit_length()-> Self;
 }
 pub(crate) trait Zero {
     fn zero() -> Self;

@@ -1,7 +1,7 @@
 use super::BitLength;
 
 impl BitLength for u32 {
-    fn bit_length()->Self {
+    fn bit_length()-> Self {
         32
     }
 }
