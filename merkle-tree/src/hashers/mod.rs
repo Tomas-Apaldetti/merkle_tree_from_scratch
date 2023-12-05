@@ -3,6 +3,7 @@ pub mod impls;
 pub mod sha256;
 pub(super) mod utils;
 
+#[derive(Clone)]
 pub struct CryptoHash {
     pub(crate) data: Vec<u8>,
 }
