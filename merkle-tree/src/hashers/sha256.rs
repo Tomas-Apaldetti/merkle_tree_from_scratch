@@ -173,6 +173,8 @@ impl CryptoHasher for SHA256 {
 
 #[cfg(test)]
 mod test{
+    use crate::{encoding::{Digestable, hex::Hex}, hashers::Hashable};
+
     use super::*;
 
     #[test]
@@ -190,19 +192,41 @@ mod test{
     fn sha256_test(){
         let inputs = [
             (
-                b"This is a test",
-                [
-                    0xC7BE1ED9u32,
-                    0x2FB8DD4,
-                    0xD48997C6,
-                    0x452F5D7E,
-                    0x509FBCDB,
-                    0xE2808B16,
-                    0xBCF4EDCE,
-                    0x4C07D14E
-                ]
+                b"This is a test".as_slice(),
+                "c7be1ed902fb8dd4d48997c6452f5d7e509fbcdbe2808b16bcf4edce4c07d14e"
+            ),
+            (
+                b"This is another test with a waaaaay longer input string, should be enough if this two are ok, because of the % chance of this two being the same but the rest is slim".as_slice(),
+                "3ae593f415aa6e2f8016a1f85d72f9ef745d33490b1b8704b77f4b78f27634e7"
             )
         ];
-        // assert_eq!(SHA256::hash(inputs[0].0).data, inputs[0].1);
+        assert_eq!(SHA256::hash(inputs[0].0).digest::<Hex>().to_lowercase(), inputs[0].1);
+        assert_eq!(SHA256::hash(inputs[1].0).digest::<Hex>().to_lowercase(), inputs[1].1);
+    }
+
+    #[test]
+    fn sha256_test_impls(){
+        let inputs = [
+            (
+                "This is a test",
+                "c7be1ed902fb8dd4d48997c6452f5d7e509fbcdbe2808b16bcf4edce4c07d14e"
+            ),
+            (
+                "This is another test with a waaaaay longer input string, should be enough if this two are ok, because of the % chance of this two being the same but the rest is slim",
+                "3ae593f415aa6e2f8016a1f85d72f9ef745d33490b1b8704b77f4b78f27634e7"
+            )
+        ];
+        assert_eq!(
+            inputs[0].0
+                .hash::<SHA256>()
+                .digest::<Hex>()
+                .to_lowercase(), 
+            inputs[0].1);
+        assert_eq!(
+            inputs[1].0.to_owned()
+                .hash::<SHA256>()
+                .digest::<Hex>()
+                .to_lowercase(), 
+            inputs[1].1);
     }
 }
