@@ -19,15 +19,3 @@ pub trait Hashable{
         T::hash(self.to_bits())
     }
 }
-
-impl Hashable for str{
-    fn to_bits(&self) -> &[u8] {
-        self.as_bytes()
-    }
-}
-
-impl Hashable for String{
-    fn to_bits(&self) -> &[u8] {
-        self.as_bytes()
-    }
-}

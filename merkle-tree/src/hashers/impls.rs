@@ -1,6 +1,6 @@
 use crate::encoding::Digestable;
 
-use super::CryptoHash;
+use super::{CryptoHash, Hashable};
 
 impl CryptoHash{
     pub(crate) fn new_32bit_word(data: &[u32], expected_bits: u16) -> Result<Self, ()>{
@@ -22,5 +22,17 @@ impl CryptoHash{
 impl Digestable for CryptoHash{
     fn bits(&self) -> &[u8] {
         &self.data
+    }
+}
+
+impl Hashable for str{
+    fn to_bits(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+impl Hashable for String{
+    fn to_bits(&self) -> &[u8] {
+        self.as_bytes()
     }
 }

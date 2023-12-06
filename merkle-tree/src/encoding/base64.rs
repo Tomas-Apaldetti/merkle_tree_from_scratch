@@ -23,7 +23,6 @@ impl Base64{
         fo | 0xFC
     }
 
-
     /// Use the least significant 2 bits of the first octect and 
     /// the most significant 4 bits of the second octect.
     /// 
