@@ -1,6 +1,6 @@
 use std::{cmp::min, marker::PhantomData};
 
-use super::{utils::{mod_sum, rotate_right, shif_right}, CryptoHash, CryptoHasher};
+use super::{utils::{mod_sum, rotate_right, shift_right}, CryptoHash, CryptoHasher};
 
 const CONSTANTS: [u32; 64] = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -43,12 +43,12 @@ impl SHA256 {
     fn mix(w: &[u32], t: usize) -> u32 {
         let s0 = rotate_right(w[t - 15], 7)
             ^ rotate_right(w[t - 15], 18)
-            ^ shif_right(w[t - 15], 3);
+            ^ shift_right(w[t - 15], 3);
 
 
         let s1 = rotate_right(w[t - 2], 17)
             ^ rotate_right(w[t - 2], 19)
-            ^ shif_right(w[t - 2], 10);
+            ^ shift_right(w[t - 2], 10);
 
         mod_sum(&[s0, w[t - 7], s1, w[t - 16]])
     }
@@ -162,9 +162,20 @@ impl CryptoHasher for SHA256 {
     fn hash(bytes: &[u8]) -> CryptoHash {
         let mut hash =  [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
 
+        if bytes.len() == 0 {
+            let mut empty_chunk = [0u8;64];
+            empty_chunk[0] = b'\x80';
+            Self::do_64bytes_chunk(&mut hash, &empty_chunk);
+        }
+
         for i in (0..bytes.len()).step_by(64) {
             let offset = min(i + 64, bytes.len());
-            Self::do_chunk(&mut hash, &bytes[i..offset], i as u64, bytes.len() as u64)
+            Self::do_chunk(
+                &mut hash, 
+                &bytes[i..offset], 
+                i as u64, 
+                bytes.len() as u64
+            );
         }
 
         return CryptoHash::new_32bit_word(&hash, 256).expect("This should never happen");
@@ -214,19 +225,23 @@ mod test{
             (
                 "This is another test with a waaaaay longer input string, should be enough if this two are ok, because of the % chance of this two being the same but the rest is slim",
                 "3ae593f415aa6e2f8016a1f85d72f9ef745d33490b1b8704b77f4b78f27634e7"
-            )
+            ),
+            (
+                "",
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            ),
+            (
+                "abc",
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            ),
+            (
+                "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+                "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+            ),
+
         ];
-        assert_eq!(
-            inputs[0].0
-                .hash::<SHA256>()
-                .digest::<Hex>()
-                .to_lowercase(), 
-            inputs[0].1);
-        assert_eq!(
-            inputs[1].0.to_owned()
-                .hash::<SHA256>()
-                .digest::<Hex>()
-                .to_lowercase(), 
-            inputs[1].1);
+        for input in inputs{
+            assert_eq!(input.0.hash::<SHA256>().digest::<Hex>().to_lowercase(), input.1);
+        }
     }
 }

@@ -7,7 +7,7 @@ pub(crate) fn rotate_right<T: Number + BitLength>(x: T, n: T) -> T {
 }
 
 #[inline(always)]
-pub(crate) fn shif_right<T: Number>(x:T, n: T) -> T {
+pub(crate) fn shift_right<T: Number>(x:T, n: T) -> T {
     x >> n
 }
 
